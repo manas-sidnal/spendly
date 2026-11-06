@@ -19,10 +19,12 @@ export default function AddExpense({
   defaultDate,
   onAdded,
   autoFocus = false,
+  offline = false,
 }: {
   defaultDate: string;
   onAdded: (month: string) => void;
   autoFocus?: boolean;
+  offline?: boolean;
 }) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
@@ -64,6 +66,7 @@ export default function AddExpense({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (offline) return; // expenses are only saved on the server, never queued locally
     const value = evaluate(amount) ?? 0;
     if (!(value > 0)) {
       setError("Enter an amount greater than zero");
@@ -212,8 +215,19 @@ export default function AddExpense({
         </div>
       )}
 
-      <button className="btn-primary" type="submit" disabled={saving}>
-        {saving ? "Saving…" : "Add expense"}
+      {offline && (
+        <div className="form-note" id="add-offline-note">
+          You’re offline, so this expense can’t be saved. Reconnect to add it.
+        </div>
+      )}
+
+      <button
+        className="btn-primary"
+        type="submit"
+        disabled={saving || offline}
+        aria-describedby={offline ? "add-offline-note" : undefined}
+      >
+        {saving ? "Saving…" : offline ? "Offline" : "Add expense"}
       </button>
     </form>
   );

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LogoutIcon, UserIcon } from "./icons";
+import { DownloadIcon, LogoutIcon, UserIcon } from "./icons";
+import { promptInstall, useInstallPrompt } from "./useInstallPrompt";
 import { useDismiss } from "./useDismiss";
 
 type Me = { email: string; createdAt: string };
@@ -10,8 +11,17 @@ export default function UserMenu({ onLogout }: { onLogout: () => void }) {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
+  const [installNote, setInstallNote] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const install = useInstallPrompt();
   useDismiss(ref, open, () => setOpen(false));
+
+  async function handleInstall() {
+    const outcome = await promptInstall();
+    if (outcome === "accepted") setInstallNote("Installed. Open Spendly from your home screen or app list.");
+    else if (outcome === "dismissed") setInstallNote("Install cancelled. Your browser will offer it again later.");
+    else setInstallNote("Install isn’t available right now.");
+  }
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -40,7 +50,10 @@ export default function UserMenu({ onLogout }: { onLogout: () => void }) {
         aria-label="Account menu"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => !o);
+          setInstallNote("");
+        }}
       >
         {initial}
       </button>
@@ -59,6 +72,21 @@ export default function UserMenu({ onLogout }: { onLogout: () => void }) {
           >
             <UserIcon /> Profile
           </button>
+          {!install.installed && install.canPrompt && (
+            <button type="button" role="menuitem" className="menu-item" onClick={handleInstall}>
+              <DownloadIcon /> Install app
+            </button>
+          )}
+          {!install.installed && !install.canPrompt && install.ios && (
+            <div className="menu-note" role="note">
+              <DownloadIcon /> <span>Install: Share → Add to Home Screen</span>
+            </div>
+          )}
+          {installNote && (
+            <div className="menu-note" role="status">
+              {installNote}
+            </div>
+          )}
           <button type="button" role="menuitem" className="menu-item danger" onClick={onLogout}>
             <LogoutIcon /> Logout
           </button>

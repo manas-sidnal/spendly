@@ -12,6 +12,7 @@ import ExpenditureView from "./ExpenditureView";
 import MonthPicker from "./MonthPicker";
 import UserMenu from "./UserMenu";
 import { useMediaQuery } from "./useMediaQuery";
+import { useOnlineStatus } from "./useOnlineStatus";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -48,6 +49,8 @@ export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false); // phone-only "add expense" bottom sheet
   const isMobile = useMediaQuery("(max-width: 860px)");
   const requestId = useRef(0);
+  const online = useOnlineStatus();
+  const wasOnline = useRef(true);
 
   useEffect(() => {
     const t = toDateStr(new Date());
@@ -84,6 +87,12 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Refresh once when the connection comes back.
+  useEffect(() => {
+    if (online && !wasOnline.current) load();
+    wasOnline.current = online;
+  }, [online, load]);
 
   async function remove(id: string) {
     const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
@@ -248,7 +257,13 @@ export default function Dashboard() {
         )}
 
         <main className={"content" + (loading ? " is-loading" : "")}>
-          {error && (
+          {!online && (
+            <div className="banner offline" role="status">
+              <strong>You’re offline.</strong> Spendly needs a connection to save or delete expenses, so Add expense is
+              paused until you’re back online.
+            </div>
+          )}
+          {error && online && (
             <div className="banner" role="alert">
               {error}
             </div>
@@ -261,7 +276,7 @@ export default function Dashboard() {
               {!isMobile && (
                 <section className="card add-card">
                   <h2 className="card-title">Add expense</h2>
-                  <AddExpense defaultDate={today} onAdded={handleAdded} />
+                  <AddExpense defaultDate={today} onAdded={handleAdded} offline={!online} />
                 </section>
               )}
 
@@ -291,7 +306,7 @@ export default function Dashboard() {
                     <div>
                       <dt>Daily average</dt>
                       <dd>{inr(Math.round(stats.avg))}</dd>
-                      <span className="stat-note">excl. rent &amp; bills</span>
+                      <dd className="stat-note">excl. rent &amp; bills</dd>
                     </div>
                     <div>
                       <dt>Transactions</dt>
@@ -317,7 +332,7 @@ export default function Dashboard() {
                   <div className="sub">
                     <h2 className="card-title">Where it went</h2>
                     <div className="sub-body scroll">
-                      <CategoryBreakdown data={stats.catData} total={stats.total} />
+                      <CategoryBreakdown data={stats.catData} total={stats.total} loading={loading && !(month in byMonth)} />
                     </div>
                     {stats.rentTotal > 0 && (
                       <div className="rent-note" style={{ "--dot": categoryColor(RENT_CATEGORY) } as CSSProperties}>
@@ -359,7 +374,14 @@ export default function Dashboard() {
               <LayoutIcon />
               <span>Dashboard</span>
             </button>
-            <button type="button" className="tab-add" aria-label="Add expense" onClick={() => setAddOpen(true)}>
+            <button
+              type="button"
+              className="tab-add"
+              aria-label={online ? "Add expense" : "Add expense (unavailable while offline)"}
+              title={online ? undefined : "You’re offline"}
+              disabled={!online}
+              onClick={() => setAddOpen(true)}
+            >
               <PlusIcon width={26} height={26} />
             </button>
             <button
@@ -384,7 +406,7 @@ export default function Dashboard() {
                     <CloseIcon />
                   </button>
                 </div>
-                <AddExpense defaultDate={today} onAdded={handleAdded} autoFocus />
+                <AddExpense defaultDate={today} onAdded={handleAdded} autoFocus offline={!online} />
               </div>
             </>
           )}

@@ -8,10 +8,27 @@ import { inr, inrCompact } from "@/lib/format";
 export default function CategoryBreakdown({
   data,
   total,
+  loading = false,
 }: {
   data: { name: string; value: number }[];
   total: number;
+  loading?: boolean;
 }) {
+  if (loading && data.length === 0) {
+    return (
+      <div className="breakdown" role="status" aria-label="Loading spending by category">
+        <div className="donut">
+          <div className="skeleton-ring" />
+        </div>
+        <div className="legend">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="skeleton-row" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (data.length === 0) {
     return (
       <div className="empty">

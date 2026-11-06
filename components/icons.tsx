@@ -120,6 +120,14 @@ export const LogoutIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const DownloadIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M5 21h14" />
+  </Icon>
+);
+
 export const ArrowUpIcon = (p: IconProps) => (
   <Icon width={13} height={13} strokeWidth={2.2} {...p}>
     <path d="M12 19V5M5 12l7-7 7 7" />

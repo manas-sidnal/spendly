@@ -16,5 +16,9 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|favicon.ico).*)"],
+  // Public (no login needed): API, build assets, favicon, and the PWA manifest, service worker,
+  // offline page and icons. The browser fetches the manifest without cookies, so it must be public.
+  matcher: [
+    "/((?!api|_next|favicon\\.ico$|manifest\\.webmanifest$|sw\\.js$|offline\\.html$|icon-192\\.png$|icon-512\\.png$|icon-512-maskable\\.png$|apple-touch-icon\\.png$).*)",
+  ],
 };
