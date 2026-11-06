@@ -30,6 +30,17 @@ export function shortMonth(month: string) {
   return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "short" });
 }
 
+/** Move a YYYY-MM-DD string by a number of days. */
+export function shiftDate(date: string, delta: number) {
+  const [y, m, d] = date.split("-").map(Number);
+  return toDateStr(new Date(y, m - 1, d + delta));
+}
+
+export function shortDate(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
 export function dayLabel(date: string, today: string) {
   if (date === today) return "Today";
   const [ty, tm, td] = today.split("-").map(Number);

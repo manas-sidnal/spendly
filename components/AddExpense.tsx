@@ -1,7 +1,9 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
+import { evaluate, hasOperator } from "@/lib/calc";
 import { CATEGORIES, PAY_METHODS, categoryColor } from "@/lib/constants";
+import { inr } from "@/lib/format";
 
 export default function AddExpense({
   defaultDate,
@@ -19,9 +21,24 @@ export default function AddExpense({
   const [error, setError] = useState("");
   const amountRef = useRef<HTMLInputElement>(null);
 
+  // The amount field doubles as a calculator: "450+120*2" shows a live result, Enter fills it in.
+  const isExpr = hasOperator(amount);
+  const calcResult = isExpr ? evaluate(amount) : null;
+
+  function onAmountKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter" || !isExpr) return;
+    e.preventDefault(); // calculate instead of submitting
+    if (calcResult === null) {
+      setError("Can't calculate that expression");
+      return;
+    }
+    setError("");
+    setAmount(String(calcResult));
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const value = parseFloat(amount);
+    const value = evaluate(amount) ?? 0;
     if (!(value > 0)) {
       setError("Enter an amount greater than zero");
       amountRef.current?.focus();
@@ -57,17 +74,21 @@ export default function AddExpense({
         <span className="currency">₹</span>
         <input
           ref={amountRef}
-          type="number"
-          inputMode="decimal"
-          step="0.01"
-          min="0.01"
+          type="text"
+          autoComplete="off"
           placeholder="0"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          aria-label="Amount in rupees"
+          onChange={(e) => setAmount(e.target.value.replace(/[^0-9+\-*/().,xX×÷ ]/g, ""))}
+          onKeyDown={onAmountKeyDown}
+          aria-label="Amount in rupees (you can type a calculation, e.g. 450+120*2)"
           required
         />
       </label>
+      {isExpr && (
+        <div className={"calc-hint" + (calcResult === null ? " invalid" : "")} aria-live="polite">
+          {calcResult === null ? "Not a valid calculation" : `= ${inr(calcResult)} · press Enter to apply`}
+        </div>
+      )}
 
       <div>
         <span className="field-label">Category</span>

@@ -1,57 +1,44 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { categoryColor } from "@/lib/constants";
-import { dayLabel, inr } from "@/lib/format";
+import { inr } from "@/lib/format";
 import type { Expense } from "@/lib/types";
 import { TrashIcon } from "./icons";
 
-export default function TransactionList({
+/** One day's expenses: the note you typed (or the category) next to its amount. */
+export default function DayCard({
+  title,
+  subtitle,
   items,
-  today,
-  loading,
   onDelete,
 }: {
+  title: string;
+  subtitle?: string;
   items: Expense[];
-  today: string;
-  loading: boolean;
   onDelete: (id: string) => void;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
-
-  const groups = useMemo(() => {
-    const map = new Map<string, Expense[]>();
-    for (const e of items) {
-      const list = map.get(e.spentOn);
-      if (list) list.push(e);
-      else map.set(e.spentOn, [e]);
-    }
-    return Array.from(map, ([date, list]) => ({
-      date,
-      list,
-      total: list.reduce((s, e) => s + e.amount, 0),
-    }));
-  }, [items]);
-
-  if (!loading && items.length === 0) {
-    return (
-      <div className="empty">
-        <strong>No expenses this month</strong>
-        <span>Add one above and it will show up here.</span>
-      </div>
-    );
-  }
+  const total = items.reduce((s, e) => s + e.amount, 0);
 
   return (
-    <div>
-      {groups.map((g) => (
-        <div className="tx-group" key={g.date}>
-          <div className="tx-head">
-            <span>{dayLabel(g.date, today)}</span>
-            <span>{inr(g.total)}</span>
+    <section className="card day-card">
+      <div className="day-head">
+        <div>
+          <h2 className="day-title">{title}</h2>
+          {subtitle && <span className="muted day-sub">{subtitle}</span>}
+        </div>
+        <strong className="day-total">{inr(total)}</strong>
+      </div>
+
+      <div className="day-body">
+        {items.length === 0 ? (
+          <div className="empty small">
+            <span>No expenses</span>
           </div>
+        ) : (
           <ul className="tx-list">
-            {g.list.map((e) => (
+            {items.map((e) => (
               <li className="tx-row" key={e.id} style={{ "--c": categoryColor(e.category) } as CSSProperties}>
                 <span className="tx-icon" aria-hidden="true">
                   {e.category.charAt(0)}
@@ -96,8 +83,8 @@ export default function TransactionList({
               </li>
             ))}
           </ul>
-        </div>
-      ))}
-    </div>
+        )}
+      </div>
+    </section>
   );
 }

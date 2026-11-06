@@ -1,26 +1,45 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { categoryColor } from "@/lib/constants";
-import { inr, monthLabel, shiftMonth, shortMonth, toDateStr } from "@/lib/format";
+import { EXCLUDED_FROM_DAILY_AVG, categoryColor } from "@/lib/constants";
+import { inr, monthLabel, shiftDate, shiftMonth, shortDate, shortMonth, toDateStr } from "@/lib/format";
 import type { Expense } from "@/lib/types";
 import AddExpense from "./AddExpense";
 import CategoryBreakdown from "./CategoryBreakdown";
 import DailyChart from "./DailyChart";
-import TransactionList from "./TransactionList";
-import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, LogoMark, LogoutIcon } from "./icons";
+import DayCard from "./DayCard";
+import ExpenditureView from "./ExpenditureView";
+import MonthPicker from "./MonthPicker";
+import UserMenu from "./UserMenu";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  LayoutIcon,
+  ListIcon,
+  LogoMark,
+  MenuIcon,
+} from "./icons";
 
 const sum = (list: Expense[]) => list.reduce((s, e) => s + e.amount, 0);
 const dayOf = (e: Expense) => Number(e.spentOn.slice(8, 10));
+const isExcluded = (e: Expense) => EXCLUDED_FROM_DAILY_AVG.includes(e.category);
+
+type View = "dashboard" | "expenses";
+const RECENT_TITLES = ["Today", "Yesterday", "Day before"];
 
 export default function Dashboard() {
   // "today" and the selected month are set on the client only, so server and browser timezones can't disagree.
   const [today, setToday] = useState("");
   const [month, setMonth] = useState("");
-  const [items, setItems] = useState<Expense[]>([]);
-  const [prevItems, setPrevItems] = useState<Expense[]>([]);
+  // Expenses cached per YYYY-MM. Besides the selected month (and the one before, for the comparison) we always
+  // hold the real current and previous month, so the Today / Yesterday / Day before cards work on any month.
+  const [byMonth, setByMonth] = useState<Record<string, Expense[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [view, setView] = useState<View>("dashboard");
+  const [navOpen, setNavOpen] = useState(false);
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -30,31 +49,30 @@ export default function Dashboard() {
   }, []);
 
   const load = useCallback(async () => {
-    if (!month) return;
+    if (!month || !today) return;
     const id = ++requestId.current;
     setLoading(true);
     try {
-      const [cur, prev] = await Promise.all([
-        fetch(`/api/expenses?month=${month}`),
-        fetch(`/api/expenses?month=${shiftMonth(month, -1)}`),
-      ]);
-      if (cur.status === 401 || prev.status === 401) {
+      const thisMonth = today.slice(0, 7);
+      const wanted = Array.from(new Set([month, shiftMonth(month, -1), thisMonth, shiftMonth(thisMonth, -1)]));
+      const responses = await Promise.all(wanted.map((m) => fetch(`/api/expenses?month=${m}`)));
+      if (responses.some((r) => r.status === 401)) {
         window.location.href = "/login";
         return;
       }
-      if (!cur.ok) throw new Error("load failed");
-      const curItems: Expense[] = await cur.json();
-      const lastItems: Expense[] = prev.ok ? await prev.json() : [];
+      if (!responses[0].ok) throw new Error("load failed");
+      const lists = await Promise.all(
+        responses.map((r) => (r.ok ? (r.json() as Promise<Expense[]>) : Promise.resolve([] as Expense[]))),
+      );
       if (id !== requestId.current) return; // a newer request superseded this one
-      setItems(curItems);
-      setPrevItems(lastItems);
+      setByMonth((prev) => ({ ...prev, ...Object.fromEntries(wanted.map((m, i) => [m, lists[i]])) }));
       setError("");
     } catch {
       if (id === requestId.current) setError("Could not load expenses. Please try again.");
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [month]);
+  }, [month, today]);
 
   useEffect(() => {
     load();
@@ -62,8 +80,9 @@ export default function Dashboard() {
 
   async function remove(id: string) {
     const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
-    if (res.ok) setItems((list) => list.filter((e) => e.id !== id));
-    else setError("Could not delete expense");
+    if (res.ok) {
+      setByMonth((all) => Object.fromEntries(Object.entries(all).map(([m, list]) => [m, list.filter((e) => e.id !== id)])));
+    } else setError("Could not delete expense");
   }
 
   async function logout() {
@@ -77,6 +96,24 @@ export default function Dashboard() {
     else load();
   }
 
+  function goTo(next: View) {
+    setView(next);
+    setNavOpen(false);
+  }
+
+  const items = useMemo(() => byMonth[month] ?? [], [byMonth, month]);
+  const prevItems = useMemo(() => (month ? (byMonth[shiftMonth(month, -1)] ?? []) : []), [byMonth, month]);
+
+  const recentDays = useMemo(() => {
+    if (!today) return [];
+    const thisMonth = today.slice(0, 7);
+    const pool = [...(byMonth[thisMonth] ?? []), ...(byMonth[shiftMonth(thisMonth, -1)] ?? [])];
+    return RECENT_TITLES.map((title, i) => {
+      const date = shiftDate(today, -i);
+      return { title, date, items: pool.filter((e) => e.spentOn === date) };
+    });
+  }, [byMonth, today]);
+
   const stats = useMemo(() => {
     if (!month || !today) return null;
     const [y, m] = month.split("-").map(Number);
@@ -85,6 +122,10 @@ export default function Dashboard() {
     const daysElapsed = isCurrent ? Number(today.slice(8, 10)) : daysInMonth;
 
     const total = sum(items);
+    // Rent and bills are lump sums: keep them in the total, but out of the per-day average and the pace.
+    const fixedTotal = sum(items.filter(isExcluded));
+    const dailyTotal = total - fixedTotal;
+    const avg = daysElapsed > 0 ? dailyTotal / daysElapsed : 0;
 
     const byCat: Record<string, number> = {};
     items.forEach((e) => (byCat[e.category] = (byCat[e.category] ?? 0) + e.amount));
@@ -106,8 +147,9 @@ export default function Dashboard() {
       total,
       isCurrent,
       daysElapsed,
-      avg: daysElapsed > 0 ? total / daysElapsed : 0,
-      projected: isCurrent && items.length > 0 ? (total / daysElapsed) * daysInMonth : null,
+      avg,
+      // Pace = what rent/bills already cost + everyday spending continued at the current daily average.
+      projected: isCurrent && items.length > 0 ? fixedTotal + avg * daysInMonth : null,
       top: catData[0]?.name ?? null,
       catData,
       dayData,
@@ -124,9 +166,20 @@ export default function Dashboard() {
     <div className="page">
       <header className="topbar">
         <div className="topbar-inner">
-          <div className="brand">
-            <LogoMark />
-            <span>Spendly</span>
+          <div className="topbar-left">
+            <button
+              type="button"
+              className="icon-btn nav-toggle"
+              aria-label="Open menu"
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen((o) => !o)}
+            >
+              <MenuIcon />
+            </button>
+            <div className="brand">
+              <LogoMark />
+              <span>Spendly</span>
+            </div>
           </div>
 
           <div className="month-switch">
@@ -138,7 +191,7 @@ export default function Dashboard() {
             >
               <ChevronLeftIcon />
             </button>
-            <span aria-live="polite">{monthLabel(month)}</span>
+            <MonthPicker month={month} currentMonth={today.slice(0, 7)} onSelect={setMonth} />
             <button
               type="button"
               className="icon-btn"
@@ -150,88 +203,133 @@ export default function Dashboard() {
           </div>
 
           <div className="topbar-actions">
-            <button type="button" className="icon-btn" onClick={logout} aria-label="Log out" title="Log out">
-              <LogoutIcon />
-            </button>
+            <UserMenu onLogout={logout} />
           </div>
         </div>
       </header>
 
-      <main className={"content" + (loading ? " is-loading" : "")}>
-        {error && (
-          <div className="banner" role="alert">
-            {error}
-          </div>
-        )}
+      <div className="shell">
+        <nav className={"rail" + (navOpen ? " open" : "")} aria-label="Main">
+          <button
+            type="button"
+            className="rail-item rail-toggle"
+            aria-label={navOpen ? "Collapse menu" : "Expand menu"}
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen((o) => !o)}
+          >
+            <MenuIcon />
+            <span className="rail-label">Menu</span>
+          </button>
+          <button
+            type="button"
+            className={"rail-item" + (view === "dashboard" ? " active" : "")}
+            title="Dashboard"
+            aria-current={view === "dashboard" ? "page" : undefined}
+            onClick={() => goTo("dashboard")}
+          >
+            <LayoutIcon />
+            <span className="rail-label">Dashboard</span>
+          </button>
+          <button
+            type="button"
+            className={"rail-item" + (view === "expenses" ? " active" : "")}
+            title="View expenditure"
+            aria-current={view === "expenses" ? "page" : undefined}
+            onClick={() => goTo("expenses")}
+          >
+            <ListIcon />
+            <span className="rail-label">View expenditure</span>
+          </button>
+        </nav>
+        {navOpen && <div className="rail-backdrop" onClick={() => setNavOpen(false)} />}
 
-        <section className="card hero">
-          <div className="hero-main">
-            <div className="eyebrow">Spent in {monthLabel(month)}</div>
-            <div className="hero-amount">{inr(stats.total)}</div>
-            <div className="hero-sub">
-              {deltaDir && stats.deltaPct !== null && (
-                <span className={`delta ${deltaDir}`}>
-                  {deltaDir === "up" && <ArrowUpIcon />}
-                  {deltaDir === "down" && <ArrowDownIcon />}
-                  {Math.round(Math.abs(stats.deltaPct))}% vs {stats.isCurrent ? `1–${stats.daysElapsed} ` : ""}
-                  {prevLabel}
-                </span>
-              )}
-              {stats.projected !== null && (
-                <span className="muted">On pace for {inr(Math.round(stats.projected))}</span>
-              )}
+        <main className={"content" + (loading ? " is-loading" : "")}>
+          {error && (
+            <div className="banner" role="alert">
+              {error}
             </div>
-          </div>
+          )}
 
-          <dl className="hero-stats">
-            <div>
-              <dt>Daily average</dt>
-              <dd>{inr(Math.round(stats.avg))}</dd>
+          {view === "expenses" ? (
+            <ExpenditureView items={items} month={month} today={today} loading={loading} onDelete={remove} />
+          ) : (
+            <div className="dash-grid">
+              <section className="card add-card">
+                <h2 className="card-title">Add expense</h2>
+                <AddExpense defaultDate={today} onAdded={handleAdded} />
+              </section>
+
+              <section className="card kpi-card">
+                <div className="hero">
+                  <div className="hero-main">
+                    <div className="eyebrow">Spent in {monthLabel(month)}</div>
+                    <div className="hero-amount">{inr(stats.total)}</div>
+                    <div className="hero-sub">
+                      {deltaDir && stats.deltaPct !== null && (
+                        <span className={`delta ${deltaDir}`}>
+                          {deltaDir === "up" && <ArrowUpIcon />}
+                          {deltaDir === "down" && <ArrowDownIcon />}
+                          {Math.round(Math.abs(stats.deltaPct))}% vs {stats.isCurrent ? `1–${stats.daysElapsed} ` : ""}
+                          {prevLabel}
+                        </span>
+                      )}
+                      {stats.projected !== null && (
+                        <span className="muted">On pace for {inr(Math.round(stats.projected))}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <dl className="hero-stats">
+                    <div>
+                      <dt>Daily average</dt>
+                      <dd>{inr(Math.round(stats.avg))}</dd>
+                      <span className="stat-note">excl. rent &amp; bills</span>
+                    </div>
+                    <div>
+                      <dt>Transactions</dt>
+                      <dd>{items.length}</dd>
+                    </div>
+                    <div>
+                      <dt>Top category</dt>
+                      <dd>
+                        {stats.top ? (
+                          <span className="top-cat" style={{ "--dot": categoryColor(stats.top) } as CSSProperties}>
+                            <span className="dot" />
+                            {stats.top}
+                          </span>
+                        ) : (
+                          "–"
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="kpi-split">
+                  <div className="sub">
+                    <h2 className="card-title">Where it went</h2>
+                    <div className="sub-body scroll">
+                      <CategoryBreakdown data={stats.catData} total={stats.total} />
+                    </div>
+                  </div>
+                  <div className="sub">
+                    <h2 className="card-title">Daily spend</h2>
+                    <div className="sub-body fill">
+                      <DailyChart data={stats.dayData} monthShort={shortMonth(month)} />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div className="recent">
+                {recentDays.map((d) => (
+                  <DayCard key={d.date} title={d.title} subtitle={shortDate(d.date)} items={d.items} onDelete={remove} />
+                ))}
+              </div>
             </div>
-            <div>
-              <dt>Transactions</dt>
-              <dd>{items.length}</dd>
-            </div>
-            <div>
-              <dt>Top category</dt>
-              <dd>
-                {stats.top ? (
-                  <span className="top-cat" style={{ "--dot": categoryColor(stats.top) } as CSSProperties}>
-                    <span className="dot" />
-                    {stats.top}
-                  </span>
-                ) : (
-                  "–"
-                )}
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <div className="grid-2">
-          <section className="card">
-            <h2 className="card-title">Add expense</h2>
-            <AddExpense defaultDate={today} onAdded={handleAdded} />
-          </section>
-
-          <section className="card">
-            <h2 className="card-title">Where it went</h2>
-            <CategoryBreakdown data={stats.catData} total={stats.total} />
-          </section>
-        </div>
-
-        <section className="card">
-          <h2 className="card-title">Daily spend</h2>
-          <DailyChart data={stats.dayData} monthShort={shortMonth(month)} />
-        </section>
-
-        <section className="card">
-          <h2 className="card-title">
-            Transactions <span className="count">{items.length}</span>
-          </h2>
-          <TransactionList items={items} today={today} loading={loading} onDelete={remove} />
-        </section>
-      </main>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

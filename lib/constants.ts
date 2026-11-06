@@ -11,6 +11,9 @@ export const CATEGORIES = [
   "Other",
 ] as const;
 
+// Lump-sum categories that would distort the "daily average" and the month-end pace.
+export const EXCLUDED_FROM_DAILY_AVG: readonly string[] = ["Rent", "Bills"];
+
 export const PAY_METHODS = ["UPI", "Card", "Cash", "Net banking"] as const;
 
 // One colour per category, used consistently in chips, charts and the transaction list.
