@@ -6,8 +6,10 @@ import { inr, monthLabel, shiftDate, shiftMonth, shortDate, shortMonth, toDateSt
 import type { Expense } from "@/lib/types";
 import AddExpense from "./AddExpense";
 import CategoryBreakdown from "./CategoryBreakdown";
+import CategoryDetail from "./CategoryDetail";
 import DailyChart from "./DailyChart";
 import DayCard from "./DayCard";
+import EditExpense from "./EditExpense";
 import ExpenditureView from "./ExpenditureView";
 import MonthPicker from "./MonthPicker";
 import UserMenu from "./UserMenu";
@@ -17,6 +19,7 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   CalendarIcon,
+  CategoryIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -35,6 +38,18 @@ const isRent = (e: Expense) => e.category === RENT_CATEGORY;
 type View = "dashboard" | "expenses";
 const RECENT_TITLES = ["Today", "Yesterday", "Day before"];
 
+/**
+ * Puts an edited expense into a month's list. Same date: it keeps its place. New date: top of that day's group,
+ * which matches the server order (date, newest first).
+ */
+function upsert(list: Expense[], updated: Expense): Expense[] {
+  const at = list.findIndex((e) => e.id === updated.id);
+  if (at !== -1 && list[at].spentOn === updated.spentOn) return list.map((e, i) => (i === at ? updated : e));
+  const rest = list.filter((e) => e.id !== updated.id);
+  const pos = rest.findIndex((e) => e.spentOn <= updated.spentOn);
+  return pos === -1 ? [...rest, updated] : [...rest.slice(0, pos), updated, ...rest.slice(pos)];
+}
+
 export default function Dashboard() {
   // "today" and the selected month are set on the client only, so server and browser timezones can't disagree.
   const [today, setToday] = useState("");
@@ -47,6 +62,8 @@ export default function Dashboard() {
   const [view, setView] = useState<View>("dashboard");
   const [navOpen, setNavOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false); // phone-only "add expense" bottom sheet
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const [categoryView, setCategoryView] = useState<string | null>(null); // category whose expenses are open
   const isMobile = useMediaQuery("(max-width: 860px)");
   const requestId = useRef(0);
   const online = useOnlineStatus();
@@ -95,10 +112,34 @@ export default function Dashboard() {
   }, [online, load]);
 
   async function remove(id: string) {
-    const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      setByMonth((all) => Object.fromEntries(Object.entries(all).map(([m, list]) => [m, list.filter((e) => e.id !== id)])));
-    } else setError("Could not delete expense");
+    try {
+      const res = await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setByMonth((all) => Object.fromEntries(Object.entries(all).map(([m, list]) => [m, list.filter((e) => e.id !== id)])));
+        return;
+      }
+    } catch {
+      // network failure: reported below
+    }
+    setError("Could not delete expense");
+  }
+
+  const closeEdit = useCallback(() => setEditing(null), []);
+  const closeCategory = useCallback(() => setCategoryView(null), []);
+
+  // An edit can change the amount, category and date, so move the row between the cached months too.
+  // We stay on the month being viewed: if the expense moved to another month it simply leaves this view.
+  function handleSaved(saved: Expense) {
+    setEditing(null);
+    setError("");
+    setByMonth((all) => {
+      const target = saved.spentOn.slice(0, 7);
+      const next: Record<string, Expense[]> = {};
+      for (const [m, list] of Object.entries(all)) {
+        next[m] = m === target ? upsert(list, saved) : list.filter((e) => e.id !== saved.id);
+      }
+      return next;
+    });
   }
 
   async function logout() {
@@ -120,6 +161,16 @@ export default function Dashboard() {
 
   const items = useMemo(() => byMonth[month] ?? [], [byMonth, month]);
   const prevItems = useMemo(() => (month ? (byMonth[shiftMonth(month, -1)] ?? []) : []), [byMonth, month]);
+
+  // Derived from state (not copied), so an edit or delete inside the category dialog updates it live.
+  // Rent is included here even though the chart leaves it out. Newest day first; same-day order is kept.
+  const categoryItems = useMemo(
+    () =>
+      categoryView
+        ? items.filter((e) => e.category === categoryView).sort((a, b) => b.spentOn.localeCompare(a.spentOn))
+        : [],
+    [items, categoryView],
+  );
 
   const recentDays = useMemo(() => {
     if (!today) return [];
@@ -153,8 +204,9 @@ export default function Dashboard() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
 
+    // Rent is one huge bar that would squash every other day, and it is reported separately, so leave it out.
     const dayData = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, amount: 0 }));
-    items.forEach((e) => {
+    spendItems.forEach((e) => {
       const slot = dayData[dayOf(e) - 1];
       if (slot) slot.amount += e.amount;
     });
@@ -184,7 +236,7 @@ export default function Dashboard() {
   const deltaDir = stats.deltaPct === null ? null : stats.deltaPct > 0 ? "up" : stats.deltaPct < 0 ? "down" : "flat";
 
   return (
-    <div className="page">
+    <div className={"page" + (view === "expenses" ? " is-calendar" : "")}>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="topbar-left">
@@ -270,7 +322,14 @@ export default function Dashboard() {
           )}
 
           {view === "expenses" ? (
-            <ExpenditureView items={items} month={month} today={today} loading={loading} onDelete={remove} />
+            <ExpenditureView
+              items={items}
+              month={month}
+              today={today}
+              loading={loading}
+              onDelete={remove}
+              onEdit={setEditing}
+            />
           ) : (
             <div className="dash-grid">
               {!isMobile && (
@@ -317,7 +376,7 @@ export default function Dashboard() {
                       <dd>
                         {stats.top ? (
                           <span className="top-cat" style={{ "--dot": categoryColor(stats.top) } as CSSProperties}>
-                            <span className="dot" />
+                            <CategoryIcon name={stats.top} width={16} height={16} className="cat-glyph" />
                             {stats.top}
                           </span>
                         ) : (
@@ -332,21 +391,46 @@ export default function Dashboard() {
                   <div className="sub">
                     <h2 className="card-title">Where it went</h2>
                     <div className="sub-body scroll">
-                      <CategoryBreakdown data={stats.catData} total={stats.total} loading={loading && !(month in byMonth)} />
+                      <CategoryBreakdown
+                        data={stats.catData}
+                        total={stats.total}
+                        loading={loading && !(month in byMonth)}
+                        onSelect={setCategoryView}
+                      />
                     </div>
                     {stats.rentTotal > 0 && (
-                      <div className="rent-note" style={{ "--dot": categoryColor(RENT_CATEGORY) } as CSSProperties}>
-                        <span className="dot" />
+                      <button
+                        type="button"
+                        className="rent-note"
+                        style={{ "--dot": categoryColor(RENT_CATEGORY) } as CSSProperties}
+                        aria-label={`Rent was ${inr(stats.rentTotal)}, not included above. View rent expenses`}
+                        onClick={() => setCategoryView(RENT_CATEGORY)}
+                      >
+                        <CategoryIcon name={RENT_CATEGORY} width={16} height={16} className="cat-glyph" />
                         <span>Rent was</span>
                         <strong>{inr(stats.rentTotal)}</strong>
                         <span className="muted">· not included above</span>
-                      </div>
+                        <ChevronRightIcon width={16} height={16} />
+                      </button>
                     )}
                   </div>
                   <div className="sub">
-                    <h2 className="card-title">Daily spend</h2>
+                    <h2 className="card-title">
+                      Daily spend <span className="muted">· excl. rent</span>
+                      {stats.avg > 0 && (
+                        <span className="chart-legend" title="Daily average, excluding rent and bills">
+                          <i className="avg-swatch" aria-hidden="true" />
+                          Avg {inr(Math.round(stats.avg))}
+                        </span>
+                      )}
+                    </h2>
                     <div className="sub-body fill">
-                      <DailyChart data={stats.dayData} monthShort={shortMonth(month)} />
+                      <DailyChart
+                        data={stats.dayData}
+                        monthShort={shortMonth(month)}
+                        average={stats.avg}
+                        todayDay={stats.isCurrent ? Number(today.slice(8, 10)) : null}
+                      />
                     </div>
                   </div>
                 </div>
@@ -354,7 +438,14 @@ export default function Dashboard() {
 
               <div className="recent">
                 {recentDays.map((d) => (
-                  <DayCard key={d.date} title={d.title} subtitle={shortDate(d.date)} items={d.items} onDelete={remove} />
+                  <DayCard
+                    key={d.date}
+                    title={d.title}
+                    subtitle={shortDate(d.date)}
+                    items={d.items}
+                    onDelete={remove}
+                    onEdit={setEditing}
+                  />
                 ))}
               </div>
             </div>
@@ -411,6 +502,30 @@ export default function Dashboard() {
             </>
           )}
         </>
+      )}
+
+      {categoryView && (
+        <CategoryDetail
+          category={categoryView}
+          month={month}
+          today={today}
+          items={categoryItems}
+          isMobile={isMobile}
+          suspendKeys={!!editing}
+          onClose={closeCategory}
+          onEdit={setEditing}
+          onDelete={remove}
+        />
+      )}
+
+      {editing && (
+        <EditExpense
+          expense={editing}
+          isMobile={isMobile}
+          offline={!online}
+          onClose={closeEdit}
+          onSaved={handleSaved}
+        />
       )}
     </div>
   );

@@ -1,4 +1,5 @@
-import type { SVGProps } from "react";
+import type { ReactNode, SVGProps } from "react";
+import type { CATEGORIES } from "@/lib/constants";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -103,6 +104,13 @@ export const ChevronRightIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const PencilIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 20h4L19.2 8.8a2.1 2.1 0 0 0-3-3L5 17v3Z" />
+    <path d="m14.5 7.5 3 3" />
+  </Icon>
+);
+
 export const TrashIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M3 6h18" />
@@ -154,5 +162,102 @@ export function LogoMark({ size = 28 }: { size?: number }) {
       <rect x="14.2" y="11" width="3.6" height="13" rx="1.8" fill="#0b0b10" />
       <rect x="20.4" y="7" width="3.6" height="17" rx="1.8" fill="#0b0b10" />
     </svg>
+  );
+}
+
+// ---------- Category doodles ----------
+// One simple line icon per entry in CATEGORIES. Typing the record on the union means adding a category to
+// lib/constants.ts without drawing it here is a compile error.
+type CategoryName = (typeof CATEGORIES)[number];
+
+const CATEGORY_ICONS: Record<CategoryName, ReactNode> = {
+  // fork + knife
+  Food: (
+    <>
+      <path d="M6 3v6a2.5 2.5 0 0 0 5 0V3" />
+      <path d="M8.5 3v18" />
+      <path d="M17 21V3c-2.4 1.2-3.5 3.6-3.5 6.5V13H17" />
+    </>
+  ),
+  // shopping basket
+  Groceries: (
+    <>
+      <path d="M3 10h18l-1.6 9a2 2 0 0 1-2 1.7H6.6a2 2 0 0 1-2-1.7L3 10Z" />
+      <path d="m8 10 3-6.5M16 10l-3-6.5" />
+      <path d="M9 14v3M12 14v3M15 14v3" />
+    </>
+  ),
+  // bus
+  Transport: (
+    <>
+      <path d="M6 3.5h12a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z" />
+      <path d="M4 10.5h16" />
+      <path d="M8 14.2h.01M16 14.2h.01" />
+      <path d="M7 18v2.5M17 18v2.5" />
+    </>
+  ),
+  // house
+  Rent: (
+    <>
+      <path d="m3.5 11 8.5-7 8.5 7" />
+      <path d="M5.5 9.5V20h13V9.5" />
+      <path d="M10 20v-5.5h4V20" />
+    </>
+  ),
+  // receipt
+  Bills: (
+    <>
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" />
+      <path d="M9 8h6M9 12h6" />
+    </>
+  ),
+  // shopping bag
+  Shopping: (
+    <>
+      <path d="M5 8h14l-1 12H6L5 8Z" />
+      <path d="M9 8V7a3 3 0 0 1 6 0v1" />
+    </>
+  ),
+  // medical cross
+  Health: <path d="M9 3.5h6V9h5.5v6H15v5.5H9V15H3.5V9H9V3.5Z" />,
+  // screen with play button
+  Entertainment: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="3" />
+      <path d="M10.5 9.5v5l4.2-2.5-4.2-2.5Z" />
+    </>
+  ),
+  // suitcase
+  Travel: (
+    <>
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M9 8V6.5A1.5 1.5 0 0 1 10.5 5h3A1.5 1.5 0 0 1 15 6.5V8" />
+      <path d="M4 13h16" />
+    </>
+  ),
+  // circle with three dots
+  Other: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h.01M12 12h.01M16 12h.01" strokeWidth={2.4} />
+    </>
+  ),
+};
+
+// Unknown or legacy categories get a plain tag.
+const FALLBACK_ICON: ReactNode = (
+  <>
+    <path d="M3.5 3.5h8.6l8.4 8.4a1.5 1.5 0 0 1 0 2.1L14 20.5a1.5 1.5 0 0 1-2.1 0L3.5 12.1V3.5Z" />
+    <path d="M7.5 7.5h.01" strokeWidth={2.4} />
+  </>
+);
+
+/** Decorative icon for an expense category (the colour comes from the surrounding element via currentColor). */
+export function CategoryIcon({ name, ...props }: IconProps & { name: string }) {
+  const icon = (CATEGORY_ICONS as Record<string, ReactNode | undefined>)[name];
+  return (
+    <Icon strokeWidth={1.75} {...props}>
+      {icon ?? FALLBACK_ICON}
+    </Icon>
   );
 }

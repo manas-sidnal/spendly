@@ -4,15 +4,19 @@ import type { CSSProperties } from "react";
 import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { categoryColor } from "@/lib/constants";
 import { inr, inrCompact } from "@/lib/format";
+import { CategoryIcon } from "./icons";
 
 export default function CategoryBreakdown({
   data,
   total,
   loading = false,
+  onSelect,
 }: {
   data: { name: string; value: number }[];
   total: number;
   loading?: boolean;
+  /** Called with the category name when a legend row or a donut slice is clicked. */
+  onSelect: (category: string) => void;
 }) {
   if (loading && data.length === 0) {
     return (
@@ -57,6 +61,10 @@ export default function CategoryBreakdown({
               startAngle={90}
               endAngle={-270}
               isAnimationActive={false}
+              onClick={(_: unknown, index: number) => {
+                const slice = chartData[index];
+                if (slice) onSelect(slice.name);
+              }}
             />
             <Tooltip
               formatter={(v) => inr(Number(v))}
@@ -83,13 +91,20 @@ export default function CategoryBreakdown({
           const color = categoryColor(d.name);
           return (
             <li key={d.name} style={{ "--dot": color } as CSSProperties}>
-              <span className="dot" />
-              <span className="name">{d.name}</span>
-              <span className="pct">{pct.toFixed(0)}%</span>
-              <span className="val">{inr(d.value)}</span>
-              <span className="bar">
-                <i style={{ width: `${pct}%` }} />
-              </span>
+              <button
+                type="button"
+                className="legend-row"
+                aria-label={`${d.name}, ${inr(d.value)}, ${pct.toFixed(0)}%. View expenses`}
+                onClick={() => onSelect(d.name)}
+              >
+                <CategoryIcon name={d.name} width={16} height={16} className="cat-glyph" />
+                <span className="name">{d.name}</span>
+                <span className="pct">{pct.toFixed(0)}%</span>
+                <span className="val">{inr(d.value)}</span>
+                <span className="bar">
+                  <i style={{ width: `${pct}%` }} />
+                </span>
+              </button>
             </li>
           );
         })}

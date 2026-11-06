@@ -1,33 +1,7 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
-
-const expenseSchema = z.object({
-  amount: z.number().positive().max(1_000_000_000),
-  category: z.string().min(1).max(50),
-  payMethod: z.string().max(50).nullish(),
-  note: z.string().max(500).nullish(),
-  spentOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
-});
-
-function serialize(e: {
-  id: string;
-  amount: unknown;
-  category: string;
-  payMethod: string | null;
-  note: string | null;
-  spentOn: Date;
-}) {
-  return {
-    id: e.id,
-    amount: Number(e.amount),
-    category: e.category,
-    payMethod: e.payMethod,
-    note: e.note,
-    spentOn: e.spentOn.toISOString().slice(0, 10),
-  };
-}
+import { expenseSchema, serialize } from "@/lib/expense";
 
 // GET /api/expenses?month=YYYY-MM
 export async function GET(req: Request) {

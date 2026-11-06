@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
+import { useId, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import { evaluate, hasOperator } from "@/lib/calc";
 import { CATEGORIES, PAY_METHODS, categoryColor } from "@/lib/constants";
 import { inr } from "@/lib/format";
+import type { Expense } from "@/lib/types";
+import { CategoryIcon } from "./icons";
 
 // Operator keys for phones, whose number pad has no + - × ÷. [label, text inserted]
 const CALC_KEYS: [string, string][] = [
@@ -15,22 +17,33 @@ const CALC_KEYS: [string, string][] = [
   [")", ")"],
 ];
 
+/**
+ * The expense form. Without `expense` it adds a new one (POST). With `expense` it edits that one (PATCH),
+ * prefilled and with the same calculator.
+ */
 export default function AddExpense({
   defaultDate,
   onAdded,
   autoFocus = false,
   offline = false,
+  expense,
+  onSaved,
 }: {
   defaultDate: string;
-  onAdded: (month: string) => void;
+  onAdded?: (month: string) => void;
   autoFocus?: boolean;
   offline?: boolean;
+  expense?: Expense;
+  onSaved?: (saved: Expense) => void;
 }) {
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState<string>(CATEGORIES[0]);
-  const [spentOn, setSpentOn] = useState(defaultDate);
-  const [payMethod, setPayMethod] = useState<string>(PAY_METHODS[0]);
-  const [note, setNote] = useState("");
+  const editing = Boolean(expense);
+  const offlineNoteId = useId(); // the add form and the edit dialog can be on screen together
+  const [amount, setAmount] = useState(expense ? String(expense.amount) : "");
+  const [category, setCategory] = useState<string>(expense?.category ?? CATEGORIES[0]);
+  const [spentOn, setSpentOn] = useState(expense?.spentOn ?? defaultDate);
+  // An old expense may have no payment method: leave every chip unselected rather than inventing one.
+  const [payMethod, setPayMethod] = useState<string | null>(expense ? expense.payMethod : PAY_METHODS[0]);
+  const [note, setNote] = useState(expense?.note ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const amountRef = useRef<HTMLInputElement>(null);
@@ -76,8 +89,8 @@ export default function AddExpense({
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/expenses", {
-        method: "POST",
+      const res = await fetch(expense ? `/api/expenses/${expense.id}` : "/api/expenses", {
+        method: expense ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount: value, category, payMethod, note, spentOn }),
       });
@@ -86,10 +99,14 @@ export default function AddExpense({
         setError(data.error ?? "Could not save expense");
         return;
       }
+      if (expense) {
+        onSaved?.((await res.json()) as Expense);
+        return;
+      }
       setAmount("");
       setNote("");
       amountRef.current?.focus();
-      onAdded(spentOn.slice(0, 7));
+      onAdded?.(spentOn.slice(0, 7));
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -166,7 +183,7 @@ export default function AddExpense({
               style={{ "--dot": categoryColor(c) } as CSSProperties}
               onClick={() => setCategory(c)}
             >
-              <span className="dot" />
+              <CategoryIcon name={c} width={15} height={15} className="cat-glyph" />
               {c}
             </button>
           ))}
@@ -216,8 +233,10 @@ export default function AddExpense({
       )}
 
       {offline && (
-        <div className="form-note" id="add-offline-note">
-          You’re offline, so this expense can’t be saved. Reconnect to add it.
+        <div className="form-note" id={offlineNoteId}>
+          {editing
+            ? "You’re offline, so your changes can’t be saved. Reconnect to save them."
+            : "You’re offline, so this expense can’t be saved. Reconnect to add it."}
         </div>
       )}
 
@@ -225,9 +244,9 @@ export default function AddExpense({
         className="btn-primary"
         type="submit"
         disabled={saving || offline}
-        aria-describedby={offline ? "add-offline-note" : undefined}
+        aria-describedby={offline ? offlineNoteId : undefined}
       >
-        {saving ? "Saving…" : offline ? "Offline" : "Add expense"}
+        {saving ? "Saving…" : offline ? "Offline" : editing ? "Save changes" : "Add expense"}
       </button>
     </form>
   );

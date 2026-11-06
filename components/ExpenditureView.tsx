@@ -5,10 +5,11 @@ import { categoryColor } from "@/lib/constants";
 import { dayLabel, inr, inrCompact } from "@/lib/format";
 import type { Expense } from "@/lib/types";
 import DayCard from "./DayCard";
-import { CloseIcon } from "./icons";
+import { CategoryIcon, CloseIcon } from "./icons";
 import { useMediaQuery } from "./useMediaQuery";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const GLANCE_MAX = 4; // icons shown per day cell on phones before "+N"
 
 /** "View expenditure" tab: a month calendar with each day's expenses written into its cell. */
 export default function ExpenditureView({
@@ -17,12 +18,14 @@ export default function ExpenditureView({
   today,
   loading,
   onDelete,
+  onEdit,
 }: {
   items: Expense[];
   month: string;
   today: string;
   loading: boolean;
   onDelete: (id: string) => void;
+  onEdit: (expense: Expense) => void;
 }) {
   // Remember the picked day together with its month, so changing month falls back to the default.
   const isMobile = useMediaQuery("(max-width: 860px)");
@@ -100,12 +103,28 @@ export default function ExpenditureView({
                 <ul className="cal-items">
                   {list.map((e) => (
                     <li key={e.id} style={{ "--c": categoryColor(e.category) } as CSSProperties}>
-                      <span className="dot" />
+                      <CategoryIcon name={e.category} width={13} height={13} className="cat-glyph" />
                       <span className="cal-note">{e.note || e.category}</span>
                       <span className="cal-amt">{inr(e.amount)}</span>
                     </li>
                   ))}
                 </ul>
+                {/* Phones: cells are too narrow for text, so show a glance of category icons instead. */}
+                {list.length > 0 && (
+                  <div className="cal-glance" aria-hidden="true">
+                    {list.slice(0, GLANCE_MAX).map((e) => (
+                      <CategoryIcon
+                        key={e.id}
+                        name={e.category}
+                        width={13}
+                        height={13}
+                        className="cat-glyph"
+                        style={{ "--c": categoryColor(e.category) } as CSSProperties}
+                      />
+                    ))}
+                    {list.length > GLANCE_MAX && <span className="more">+{list.length - GLANCE_MAX}</span>}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -128,6 +147,7 @@ export default function ExpenditureView({
                 subtitle={`${activeItems.length} ${activeItems.length === 1 ? "expense" : "expenses"}`}
                 items={activeItems}
                 onDelete={onDelete}
+                onEdit={onEdit}
               />
             </div>
           </>
@@ -141,11 +161,12 @@ export default function ExpenditureView({
               subtitle={`${activeItems.length} ${activeItems.length === 1 ? "expense" : "expenses"}`}
               items={activeItems}
               onDelete={onDelete}
+              onEdit={onEdit}
             />
           ) : (
             <div className="card cal-hint">
               <strong>Pick a day</strong>
-              <span>Select a date to see its expenses in full and delete entries.</span>
+              <span>Select a date to see its expenses in full, then edit or delete entries.</span>
             </div>
           )}
         </aside>
