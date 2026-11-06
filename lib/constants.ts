@@ -11,6 +11,9 @@ export const CATEGORIES = [
   "Other",
 ] as const;
 
+// Shown separately from the monthly total and the "Where it went" chart.
+export const RENT_CATEGORY = "Rent";
+
 // Lump-sum categories that would distort the "daily average" and the month-end pace.
 export const EXCLUDED_FROM_DAILY_AVG: readonly string[] = ["Rent", "Bills"];
 

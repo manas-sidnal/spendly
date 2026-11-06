@@ -253,7 +253,7 @@ input[type="number"] {
   border-bottom: 1px solid var(--border);
 }
 .topbar-inner {
-  padding: 10px 20px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 20px 10px;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -263,9 +263,6 @@ input[type="number"] {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.nav-toggle {
-  display: none;
 }
 .brand {
   display: flex;
@@ -527,9 +524,6 @@ input[type="number"] {
 .rail:not(.open) .rail-label {
   display: none;
 }
-.rail-backdrop {
-  display: none;
-}
 
 .content {
   flex: 1;
@@ -730,6 +724,22 @@ input[type="number"] {
   position: absolute;
   inset: 0;
 }
+.rent-note {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-2);
+}
+.rent-note strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 .recent {
   grid-column: 1 / -1;
   min-height: 0;
@@ -836,6 +846,102 @@ input[type="number"] {
 }
 .calc-hint.invalid {
   color: var(--danger);
+}
+.hint-mobile {
+  display: none;
+}
+/* Operator keys: phones only (desktop has a real keyboard). */
+.calc-keys {
+  display: none;
+}
+.calc-key {
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 18px;
+  transition: background 0.12s;
+}
+.calc-key:active {
+  background: var(--surface-3);
+}
+.calc-key.equals {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+.calc-key:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- Phone chrome: tab bar + bottom sheets ---------- */
+.tabbar {
+  display: none;
+}
+.sheet-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+.sheet {
+  position: fixed;
+  z-index: 41;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 92dvh;
+  overflow-y: auto;
+  padding: 10px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-bottom: 0;
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
+  animation: sheet-up 0.22s ease-out;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+.sheet-grab {
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 0 auto 10px;
+  border-radius: 99px;
+  background: var(--border-strong);
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.sheet-head h2 {
+  font-size: 16px;
+}
+.sheet-close {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+}
+.sheet .day-card {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.sheet .day-head {
+  padding-right: 44px;
+}
+.sheet .day-body {
+  max-height: 55dvh;
 }
 .amount-field {
   display: flex;
@@ -1173,7 +1279,7 @@ input[type="number"] {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 860px) {
-  /* Small screens: let the page scroll normally and turn the rail into a slide-in drawer. */
+  /* Phones: the page scrolls normally, navigation moves to a bottom tab bar, forms open as bottom sheets. */
   .page {
     height: auto;
     min-height: 100dvh;
@@ -1182,36 +1288,9 @@ input[type="number"] {
   .shell {
     display: block;
   }
-  .nav-toggle {
-    display: inline-grid;
-  }
-  .rail {
-    position: fixed;
-    z-index: 20;
-    top: 55px;
-    bottom: 0;
-    left: 0;
-    width: 240px;
-    background: var(--bg);
-    transform: translateX(-100%);
-    transition: transform 0.2s ease;
-  }
-  .rail.open {
-    width: 240px;
-    transform: none;
-  }
-  .rail-toggle {
-    display: none;
-  }
-  .rail-backdrop {
-    display: block;
-    position: fixed;
-    z-index: 15;
-    inset: 55px 0 0 0;
-    background: rgba(0, 0, 0, 0.5);
-  }
   .content {
     display: block;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
   .content > * + * {
     margin-top: 12px;
@@ -1266,8 +1345,83 @@ input[type="number"] {
   .cal-items {
     display: none;
   }
-  .cal-side {
-    width: auto;
+  .tabbar {
+    position: fixed;
+    z-index: 30;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: rgba(9, 9, 11, 0.88);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border);
+  }
+  .tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 50px;
+    border: 0;
+    background: transparent;
+    color: var(--text-3);
+    font-size: 11px;
+  }
+  .tab.active {
+    color: var(--text);
+  }
+  .tab-add {
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 58px;
+    margin: -24px 18px 0;
+    border: 4px solid var(--bg);
+    border-radius: 50%;
+    background: var(--accent);
+    color: #09090b;
+    box-shadow: 0 8px 24px rgba(129, 140, 248, 0.35);
+  }
+  .tab-add:active {
+    transform: scale(0.96);
+  }
+  .calc-keys {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .hint-desktop {
+    display: none;
+  }
+  .hint-mobile {
+    display: inline;
+  }
+  /* Comfortable touch sizes; 16px inputs stop iOS Safari from zooming in on focus. */
+  .input {
+    font-size: 16px;
+  }
+  .chip {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+  .icon-btn,
+  .avatar-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .month-btn {
+    height: 40px;
+  }
+  .btn-primary {
+    height: 48px;
+  }
+  .sheet .calc-hint {
+    margin-top: -4px;
   }
 }
 @media (max-width: 560px) {
@@ -1285,7 +1439,7 @@ input[type="number"] {
     min-width: 112px;
   }
   .content {
-    padding: 16px 14px 48px;
+    padding: 16px 14px calc(96px + env(safe-area-inset-bottom, 0px));
   }
   .hero {
     grid-template-columns: 1fr;

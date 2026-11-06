@@ -2,9 +2,11 @@
 
 import { useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { categoryColor } from "@/lib/constants";
-import { dayLabel, inr } from "@/lib/format";
+import { dayLabel, inr, inrCompact } from "@/lib/format";
 import type { Expense } from "@/lib/types";
 import DayCard from "./DayCard";
+import { CloseIcon } from "./icons";
+import { useMediaQuery } from "./useMediaQuery";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -23,6 +25,7 @@ export default function ExpenditureView({
   onDelete: (id: string) => void;
 }) {
   // Remember the picked day together with its month, so changing month falls back to the default.
+  const isMobile = useMediaQuery("(max-width: 860px)");
   const [picked, setPicked] = useState<{ month: string; date: string | null } | null>(null);
 
   const { cells, weeks, byDate } = useMemo(() => {
@@ -43,11 +46,17 @@ export default function ExpenditureView({
     return { cells: all, weeks: weekCount, byDate: map };
   }, [items, month]);
 
-  const active = picked && picked.month === month ? picked.date : today.startsWith(month) ? today : null;
+  // On desktop today is pre-selected; on phones nothing is, so no sheet pops up uninvited.
+  const defaultDay = !isMobile && today.startsWith(month) ? today : null;
+  const active = picked && picked.month === month ? picked.date : defaultDay;
   const activeItems = active ? (byDate.get(active) ?? []) : [];
 
   function select(date: string) {
     setPicked({ month, date: date === active ? null : date });
+  }
+
+  function closeDay() {
+    setPicked({ month, date: null });
   }
 
   function onKey(e: KeyboardEvent<HTMLDivElement>, date: string) {
@@ -86,7 +95,7 @@ export default function ExpenditureView({
               >
                 <div className="cal-day">
                   <span className="cal-num">{day}</span>
-                  {total > 0 && <span className="cal-total">{inr(total)}</span>}
+                  {total > 0 && <span className="cal-total">{isMobile ? inrCompact(total) : inr(total)}</span>}
                 </div>
                 <ul className="cal-items">
                   {list.map((e) => (
@@ -104,22 +113,43 @@ export default function ExpenditureView({
         {!loading && items.length === 0 && <div className="cal-empty muted">No expenses this month</div>}
       </div>
 
-      <aside className="cal-side">
-        {active ? (
-          <DayCard
-            key={active}
-            title={dayLabel(active, today)}
-            subtitle={`${activeItems.length} ${activeItems.length === 1 ? "expense" : "expenses"}`}
-            items={activeItems}
-            onDelete={onDelete}
-          />
-        ) : (
-          <div className="card cal-hint">
-            <strong>Pick a day</strong>
-            <span>Select a date to see its expenses in full and delete entries.</span>
-          </div>
-        )}
-      </aside>
+      {isMobile ? (
+        active && (
+          <>
+            <div className="sheet-backdrop" onClick={closeDay} />
+            <div className="sheet" role="dialog" aria-label="Day details">
+              <span className="sheet-grab" />
+              <button type="button" className="icon-btn sheet-close" aria-label="Close" onClick={closeDay}>
+                <CloseIcon />
+              </button>
+              <DayCard
+                key={active}
+                title={dayLabel(active, today)}
+                subtitle={`${activeItems.length} ${activeItems.length === 1 ? "expense" : "expenses"}`}
+                items={activeItems}
+                onDelete={onDelete}
+              />
+            </div>
+          </>
+        )
+      ) : (
+        <aside className="cal-side">
+          {active ? (
+            <DayCard
+              key={active}
+              title={dayLabel(active, today)}
+              subtitle={`${activeItems.length} ${activeItems.length === 1 ? "expense" : "expenses"}`}
+              items={activeItems}
+              onDelete={onDelete}
+            />
+          ) : (
+            <div className="card cal-hint">
+              <strong>Pick a day</strong>
+              <span>Select a date to see its expenses in full and delete entries.</span>
+            </div>
+          )}
+        </aside>
+      )}
     </div>
   );
 }

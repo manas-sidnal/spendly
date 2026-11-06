@@ -40,6 +40,25 @@ export const UserIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const PlusIcon = (p: IconProps) => (
+  <Icon strokeWidth={2.2} {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Icon>
+);
+
+export const CloseIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Icon>
+);
+
+export const CalendarIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="4.5" width="18" height="16.5" rx="2.5" />
+    <path d="M3 9.5h18M8 3v3M16 3v3" />
+  </Icon>
+);
+
 export const LayoutIcon = (p: IconProps) => (
   <Icon {...p}>
     <rect x="3" y="3" width="7" height="9" rx="1.5" />

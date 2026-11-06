@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { EXCLUDED_FROM_DAILY_AVG, categoryColor } from "@/lib/constants";
+import { EXCLUDED_FROM_DAILY_AVG, RENT_CATEGORY, categoryColor } from "@/lib/constants";
 import { inr, monthLabel, shiftDate, shiftMonth, shortDate, shortMonth, toDateStr } from "@/lib/format";
 import type { Expense } from "@/lib/types";
 import AddExpense from "./AddExpense";
@@ -11,20 +11,25 @@ import DayCard from "./DayCard";
 import ExpenditureView from "./ExpenditureView";
 import MonthPicker from "./MonthPicker";
 import UserMenu from "./UserMenu";
+import { useMediaQuery } from "./useMediaQuery";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CloseIcon,
   LayoutIcon,
   ListIcon,
   LogoMark,
   MenuIcon,
+  PlusIcon,
 } from "./icons";
 
 const sum = (list: Expense[]) => list.reduce((s, e) => s + e.amount, 0);
 const dayOf = (e: Expense) => Number(e.spentOn.slice(8, 10));
 const isExcluded = (e: Expense) => EXCLUDED_FROM_DAILY_AVG.includes(e.category);
+const isRent = (e: Expense) => e.category === RENT_CATEGORY;
 
 type View = "dashboard" | "expenses";
 const RECENT_TITLES = ["Today", "Yesterday", "Day before"];
@@ -40,6 +45,8 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [view, setView] = useState<View>("dashboard");
   const [navOpen, setNavOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false); // phone-only "add expense" bottom sheet
+  const isMobile = useMediaQuery("(max-width: 860px)");
   const requestId = useRef(0);
 
   useEffect(() => {
@@ -91,6 +98,7 @@ export default function Dashboard() {
   }
 
   function handleAdded(addedMonth: string) {
+    setAddOpen(false);
     // If the expense is in another month, jump there so it is visible.
     if (addedMonth !== month) setMonth(addedMonth);
     else load();
@@ -121,14 +129,17 @@ export default function Dashboard() {
     const isCurrent = today.slice(0, 7) === month;
     const daysElapsed = isCurrent ? Number(today.slice(8, 10)) : daysInMonth;
 
-    const total = sum(items);
-    // Rent and bills are lump sums: keep them in the total, but out of the per-day average and the pace.
-    const fixedTotal = sum(items.filter(isExcluded));
+    // Rent is reported on its own: it is left out of the monthly total, the category chart and the top category.
+    const rentTotal = sum(items.filter(isRent));
+    const spendItems = items.filter((e) => !isRent(e));
+    const total = sum(spendItems);
+    // Other lump sums (bills) stay in the total, but out of the per-day average and the pace.
+    const fixedTotal = sum(spendItems.filter(isExcluded));
     const dailyTotal = total - fixedTotal;
     const avg = daysElapsed > 0 ? dailyTotal / daysElapsed : 0;
 
     const byCat: Record<string, number> = {};
-    items.forEach((e) => (byCat[e.category] = (byCat[e.category] ?? 0) + e.amount));
+    spendItems.forEach((e) => (byCat[e.category] = (byCat[e.category] ?? 0) + e.amount));
     const catData = Object.entries(byCat)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
@@ -140,16 +151,17 @@ export default function Dashboard() {
     });
 
     // Compare like with like: for the current month, only the same days of last month.
-    const prevComparable = sum(prevItems.filter((e) => !isCurrent || dayOf(e) <= daysElapsed));
+    const prevComparable = sum(prevItems.filter((e) => !isRent(e) && (!isCurrent || dayOf(e) <= daysElapsed)));
     const deltaPct = prevComparable > 0 ? ((total - prevComparable) / prevComparable) * 100 : null;
 
     return {
       total,
+      rentTotal,
       isCurrent,
       daysElapsed,
       avg,
-      // Pace = what rent/bills already cost + everyday spending continued at the current daily average.
-      projected: isCurrent && items.length > 0 ? fixedTotal + avg * daysInMonth : null,
+      // Pace = what bills already cost + everyday spending continued at the current daily average (rent excluded).
+      projected: isCurrent && spendItems.length > 0 ? fixedTotal + avg * daysInMonth : null,
       top: catData[0]?.name ?? null,
       catData,
       dayData,
@@ -167,15 +179,6 @@ export default function Dashboard() {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="topbar-left">
-            <button
-              type="button"
-              className="icon-btn nav-toggle"
-              aria-label="Open menu"
-              aria-expanded={navOpen}
-              onClick={() => setNavOpen((o) => !o)}
-            >
-              <MenuIcon />
-            </button>
             <div className="brand">
               <LogoMark />
               <span>Spendly</span>
@@ -209,39 +212,40 @@ export default function Dashboard() {
       </header>
 
       <div className="shell">
-        <nav className={"rail" + (navOpen ? " open" : "")} aria-label="Main">
-          <button
-            type="button"
-            className="rail-item rail-toggle"
-            aria-label={navOpen ? "Collapse menu" : "Expand menu"}
-            aria-expanded={navOpen}
-            onClick={() => setNavOpen((o) => !o)}
-          >
-            <MenuIcon />
-            <span className="rail-label">Menu</span>
-          </button>
-          <button
-            type="button"
-            className={"rail-item" + (view === "dashboard" ? " active" : "")}
-            title="Dashboard"
-            aria-current={view === "dashboard" ? "page" : undefined}
-            onClick={() => goTo("dashboard")}
-          >
-            <LayoutIcon />
-            <span className="rail-label">Dashboard</span>
-          </button>
-          <button
-            type="button"
-            className={"rail-item" + (view === "expenses" ? " active" : "")}
-            title="View expenditure"
-            aria-current={view === "expenses" ? "page" : undefined}
-            onClick={() => goTo("expenses")}
-          >
-            <ListIcon />
-            <span className="rail-label">View expenditure</span>
-          </button>
-        </nav>
-        {navOpen && <div className="rail-backdrop" onClick={() => setNavOpen(false)} />}
+        {!isMobile && (
+          <nav className={"rail" + (navOpen ? " open" : "")} aria-label="Main">
+            <button
+              type="button"
+              className="rail-item rail-toggle"
+              aria-label={navOpen ? "Collapse menu" : "Expand menu"}
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen((o) => !o)}
+            >
+              <MenuIcon />
+              <span className="rail-label">Menu</span>
+            </button>
+            <button
+              type="button"
+              className={"rail-item" + (view === "dashboard" ? " active" : "")}
+              title="Dashboard"
+              aria-current={view === "dashboard" ? "page" : undefined}
+              onClick={() => goTo("dashboard")}
+            >
+              <LayoutIcon />
+              <span className="rail-label">Dashboard</span>
+            </button>
+            <button
+              type="button"
+              className={"rail-item" + (view === "expenses" ? " active" : "")}
+              title="View expenditure"
+              aria-current={view === "expenses" ? "page" : undefined}
+              onClick={() => goTo("expenses")}
+            >
+              <ListIcon />
+              <span className="rail-label">View expenditure</span>
+            </button>
+          </nav>
+        )}
 
         <main className={"content" + (loading ? " is-loading" : "")}>
           {error && (
@@ -254,15 +258,19 @@ export default function Dashboard() {
             <ExpenditureView items={items} month={month} today={today} loading={loading} onDelete={remove} />
           ) : (
             <div className="dash-grid">
-              <section className="card add-card">
-                <h2 className="card-title">Add expense</h2>
-                <AddExpense defaultDate={today} onAdded={handleAdded} />
-              </section>
+              {!isMobile && (
+                <section className="card add-card">
+                  <h2 className="card-title">Add expense</h2>
+                  <AddExpense defaultDate={today} onAdded={handleAdded} />
+                </section>
+              )}
 
               <section className="card kpi-card">
                 <div className="hero">
                   <div className="hero-main">
-                    <div className="eyebrow">Spent in {monthLabel(month)}</div>
+                    <div className="eyebrow">
+                      Spent in {monthLabel(month)} <span className="muted">· excl. rent</span>
+                    </div>
                     <div className="hero-amount">{inr(stats.total)}</div>
                     <div className="hero-sub">
                       {deltaDir && stats.deltaPct !== null && (
@@ -311,6 +319,14 @@ export default function Dashboard() {
                     <div className="sub-body scroll">
                       <CategoryBreakdown data={stats.catData} total={stats.total} />
                     </div>
+                    {stats.rentTotal > 0 && (
+                      <div className="rent-note" style={{ "--dot": categoryColor(RENT_CATEGORY) } as CSSProperties}>
+                        <span className="dot" />
+                        <span>Rent was</span>
+                        <strong>{inr(stats.rentTotal)}</strong>
+                        <span className="muted">· not included above</span>
+                      </div>
+                    )}
                   </div>
                   <div className="sub">
                     <h2 className="card-title">Daily spend</h2>
@@ -330,6 +346,50 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+
+      {isMobile && (
+        <>
+          <nav className="tabbar" aria-label="Main">
+            <button
+              type="button"
+              className={"tab" + (view === "dashboard" ? " active" : "")}
+              aria-current={view === "dashboard" ? "page" : undefined}
+              onClick={() => goTo("dashboard")}
+            >
+              <LayoutIcon />
+              <span>Dashboard</span>
+            </button>
+            <button type="button" className="tab-add" aria-label="Add expense" onClick={() => setAddOpen(true)}>
+              <PlusIcon width={26} height={26} />
+            </button>
+            <button
+              type="button"
+              className={"tab" + (view === "expenses" ? " active" : "")}
+              aria-current={view === "expenses" ? "page" : undefined}
+              onClick={() => goTo("expenses")}
+            >
+              <CalendarIcon />
+              <span>Calendar</span>
+            </button>
+          </nav>
+
+          {addOpen && (
+            <>
+              <div className="sheet-backdrop" onClick={() => setAddOpen(false)} />
+              <div className="sheet" role="dialog" aria-label="Add expense">
+                <span className="sheet-grab" />
+                <div className="sheet-head">
+                  <h2>Add expense</h2>
+                  <button type="button" className="icon-btn" aria-label="Close" onClick={() => setAddOpen(false)}>
+                    <CloseIcon />
+                  </button>
+                </div>
+                <AddExpense defaultDate={today} onAdded={handleAdded} autoFocus />
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

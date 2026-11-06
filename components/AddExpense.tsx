@@ -5,12 +5,24 @@ import { evaluate, hasOperator } from "@/lib/calc";
 import { CATEGORIES, PAY_METHODS, categoryColor } from "@/lib/constants";
 import { inr } from "@/lib/format";
 
+// Operator keys for phones, whose number pad has no + - × ÷. [label, text inserted]
+const CALC_KEYS: [string, string][] = [
+  ["+", "+"],
+  ["−", "-"],
+  ["×", "×"],
+  ["÷", "÷"],
+  ["(", "("],
+  [")", ")"],
+];
+
 export default function AddExpense({
   defaultDate,
   onAdded,
+  autoFocus = false,
 }: {
   defaultDate: string;
   onAdded: (month: string) => void;
+  autoFocus?: boolean;
 }) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
@@ -24,6 +36,20 @@ export default function AddExpense({
   // The amount field doubles as a calculator: "450+120*2" shows a live result, Enter fills it in.
   const isExpr = hasOperator(amount);
   const calcResult = isExpr ? evaluate(amount) : null;
+
+  function insertKey(text: string) {
+    const el = amountRef.current;
+    const start = el?.selectionStart ?? amount.length;
+    const end = el?.selectionEnd ?? start;
+    setAmount(amount.slice(0, start) + text + amount.slice(end));
+    setError("");
+    requestAnimationFrame(() => el?.setSelectionRange(start + text.length, start + text.length));
+  }
+
+  function applyResult() {
+    if (calcResult !== null) setAmount(String(calcResult));
+    amountRef.current?.focus();
+  }
 
   function onAmountKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter" || !isExpr) return;
@@ -75,6 +101,8 @@ export default function AddExpense({
         <input
           ref={amountRef}
           type="text"
+          inputMode="decimal"
+          autoFocus={autoFocus}
           autoComplete="off"
           placeholder="0"
           value={amount}
@@ -84,9 +112,41 @@ export default function AddExpense({
           required
         />
       </label>
+      <div className="calc-keys" role="group" aria-label="Calculator keys">
+        {CALC_KEYS.map(([label, text]) => (
+          <button
+            key={label}
+            type="button"
+            className="calc-key"
+            aria-label={text}
+            onMouseDown={(e) => e.preventDefault()} // keep the amount field focused so the keyboard stays up
+            onClick={() => insertKey(text)}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="calc-key equals"
+          aria-label="Calculate"
+          disabled={calcResult === null}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={applyResult}
+        >
+          =
+        </button>
+      </div>
       {isExpr && (
         <div className={"calc-hint" + (calcResult === null ? " invalid" : "")} aria-live="polite">
-          {calcResult === null ? "Not a valid calculation" : `= ${inr(calcResult)} · press Enter to apply`}
+          {calcResult === null ? (
+            "Not a valid calculation"
+          ) : (
+            <>
+              = {inr(calcResult)}
+              <span className="hint-desktop"> · press Enter to apply</span>
+              <span className="hint-mobile"> · tap = to apply</span>
+            </>
+          )}
         </div>
       )}
 
